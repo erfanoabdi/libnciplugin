@@ -1,0 +1,6 @@
+Support library for NCI based nfcd plugins
+==========================================
+
+Provides NciAdapter class which implements significant portion of
+NfcAdapter functionality for NCI based nfcd plugins. The derived
+class is expected to implement power management and HAL I/O parts.

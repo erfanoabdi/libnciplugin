@@ -1,0 +1,3 @@
+debian/tmp/usr/lib/libnciplugin.so usr/lib
+include/*.h usr/include/nciplugin
+build/libnciplugin.pc usr/lib/pkgconfig

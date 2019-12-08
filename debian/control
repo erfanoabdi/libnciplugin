@@ -1,0 +1,18 @@
+Source: libnciplugin
+Section: libs
+Priority: optional
+Maintainer: Slava Monich <slava.monich@jolla.com>
+Build-Depends: debhelper (>= 7), libglib2.0-dev (>= 2.0), libglibutil-dev, libncicore-dev
+Standards-Version: 3.8.4
+
+Package: libnciplugin
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Support library for NCI-based nfcd plugins
+
+Package: libnciplugin-dev
+Section: libdevel
+Architecture: any
+Depends: libnciplugin (= ${binary:Version}), libglibutil-dev, libncicore-dev, ${misc:Depends}
+Description: Development files for libnciplugin
