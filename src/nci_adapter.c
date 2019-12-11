@@ -450,10 +450,9 @@ nci_adapter_init(
 
     self->priv = priv;
     adapter->supported_modes = NFC_MODE_READER_WRITER;
-    adapter->supported_tags = NFC_TAG_TYPE_FELICA |
-        NFC_TAG_TYPE_MIFARE_CLASSIC | NFC_TAG_TYPE_MIFARE_ULTRALIGHT;
+    adapter->supported_tags = NFC_TAG_TYPE_MIFARE_ULTRALIGHT;
     adapter->supported_protocols =  NFC_PROTOCOL_T2_TAG |
-        NFC_PROTOCOL_T4A_TAG | NFC_PROTOCOL_T4B_TAG | NFC_PROTOCOL_NFC_DEP;
+        NFC_PROTOCOL_T4A_TAG | NFC_PROTOCOL_T4B_TAG;
 }
 
 static
