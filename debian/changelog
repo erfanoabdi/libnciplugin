@@ -1,3 +1,9 @@
+libnciplugin (1.0.1) unstable; urgency=low
+
+  * Don't claim support of unsupported things
+
+ -- Slava Monich <slava.monich@jolla.com>  Thu, 12 Dec 2019 01:34:07 +0300
+
 libnciplugin (1.0.0) unstable; urgency=low
 
   * Initial release
