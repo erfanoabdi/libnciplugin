@@ -1,3 +1,10 @@
+libnciplugin (1.0.2) unstable; urgency=low
+
+  * Virtualize completion of transmission
+  * Don't try to handle active PollA as it's not supported yet
+
+ -- Slava Monich <slava.monich@jolla.com>  Mon, 16 Dec 2019 20:28:40 +0200
+
 libnciplugin (1.0.1) unstable; urgency=low
 
   * Don't claim support of unsupported things
