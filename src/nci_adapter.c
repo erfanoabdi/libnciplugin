@@ -252,7 +252,6 @@ nci_adapter_nci_intf_activated(
 
         switch (ntf->mode) {
         case NCI_MODE_PASSIVE_POLL_A:
-        case NCI_MODE_ACTIVE_POLL_A:
             switch (ntf->rf_intf) {
             case NCI_RF_INTERFACE_FRAME:
                 /* Type 2 Tag */
@@ -290,6 +289,7 @@ nci_adapter_nci_intf_activated(
                 break;
             }
             break;
+        case NCI_MODE_ACTIVE_POLL_A:
         case NCI_MODE_PASSIVE_POLL_F:
         case NCI_MODE_ACTIVE_POLL_F:
         case NCI_MODE_PASSIVE_POLL_15693:

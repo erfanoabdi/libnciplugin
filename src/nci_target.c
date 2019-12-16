@@ -64,15 +64,22 @@ guint
     NciTarget* self,
     NciTargetPresenceCheck* check);
 
+typedef
+gboolean
+(*NciTargetTransmitFinishFunc)(
+    NfcTarget* target,
+    const guint8* payload,
+    guint len);
+
 struct nci_target {
     NfcTarget target;
     NciCore* nci;
-    NCI_RF_INTERFACE rf_intf;
     gulong event_id[EVENT_COUNT];
     guint send_in_progress;
     gboolean transmit_in_progress;
     GBytes* pending_reply; /* Reply arrived before send has completed */
     NciTargetPresenceCheckFunc presence_check_fn;
+    NciTargetTransmitFinishFunc transmit_finish_fn;
 };
 
 GType nci_target_get_type(void);
@@ -146,31 +153,10 @@ nci_target_finish_transmit(
     NfcTarget* target = &self->target;
 
     self->transmit_in_progress = FALSE;
-    if (len > 0) {
-        if (self->rf_intf == NCI_RF_INTERFACE_FRAME) {
-            const guint8 status = payload[len - 1];
-
-            /*
-             * 8.2 Frame RF Interface
-             * 8.2.1.2 Data from RF to the DH
-             */
-            if (status == NCI_STATUS_OK) {
-                nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK,
-                    payload, len - 1);
-                return;
-            }
-            GDEBUG("Transmission status 0x%02x", status);
-        } else if (self->rf_intf == NCI_RF_INTERFACE_ISO_DEP) {
-            /*
-             * 8.3 ISO-DEP RF Interface
-             * 8.3.1.2 Data from RF to the DH
-             */
-            nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK,
-                payload, len);
-            return;
-        }
+    if (!self->transmit_finish_fn ||
+        !self->transmit_finish_fn(target, payload, len)) {
+        nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_ERROR, NULL, 0);
     }
-    nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_ERROR, NULL, 0);
 }
 
 static
@@ -266,6 +252,48 @@ nci_target_presence_check_t4(
         nci_target_presence_check_free1, check);
 }
 
+static
+gboolean
+nci_target_transmit_finish_frame(
+    NfcTarget* target,
+    const guint8* payload,
+    guint len)
+{
+    if (len > 0) {
+        const guint8 status = payload[len - 1];
+
+        /*
+         * 8.2 Frame RF Interface
+         * 8.2.1.2 Data from RF to the DH
+         */
+        if (status == NCI_STATUS_OK) {
+            nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK,
+                payload, len - 1);
+            return TRUE;
+        }
+        GDEBUG("Transmission status 0x%02x", status);
+    }
+    return FALSE;
+}
+
+static
+gboolean
+nci_target_transmit_finish_iso_dep(
+    NfcTarget* target,
+    const guint8* payload,
+    guint len)
+{
+    if (len > 0) {
+        /*
+         * 8.3 ISO-DEP RF Interface
+         * 8.3.1.2 Data from RF to the DH
+         */
+        nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK, payload, len);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 /*==========================================================================*
  * Interface
  *==========================================================================*/
@@ -327,11 +355,22 @@ nci_target_new(
          target->protocol = NFC_PROTOCOL_NFC_DEP;
          break;
      default:
-         GDEBUG("Unexpected protocol 0x%02x", ntf->protocol);
+         GDEBUG("Unsupported protocol 0x%02x", ntf->protocol);
          break;
      }
 
-     self->rf_intf = ntf->rf_intf;
+     switch (ntf->rf_intf) {
+     case NCI_RF_INTERFACE_FRAME:
+         self->transmit_finish_fn = nci_target_transmit_finish_frame;
+         break;
+     case NCI_RF_INTERFACE_ISO_DEP:
+         self->transmit_finish_fn = nci_target_transmit_finish_iso_dep;
+         break;
+     default:
+         GDEBUG("Unsupported RF interface 0x%02x", ntf->rf_intf);
+         break;
+     }
+
      self->nci = nci;
      self->event_id[EVENT_DATA_PACKET] = nci_core_add_data_packet_handler(nci,
          nci_target_data_packet_handler, self);
