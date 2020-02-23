@@ -35,6 +35,8 @@
  * any official policies, either expressed or implied.
  */
 
+#define GLIB_DISABLE_DEPRECATION_WARNINGS
+
 #include "nci_adapter_impl.h"
 #include "nci_plugin_p.h"
 #include "nci_plugin_log.h"
