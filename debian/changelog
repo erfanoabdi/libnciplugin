@@ -1,3 +1,10 @@
+libnciplugin (1.0.3) unstable; urgency=low
+
+  * Correctly cancel presence check
+  * Ignore known Glib deprecation warnings
+
+ -- Slava Monich <slava.monich@jolla.com>  Sun, 23 Feb 2020 04:15:39 +0200
+
 libnciplugin (1.0.2) unstable; urgency=low
 
   * Virtualize completion of transmission
