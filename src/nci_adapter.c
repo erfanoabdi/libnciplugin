@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2019 Jolla Ltd.
- * Copyright (C) 2019 Slava Monich <slava.monich@jolla.com>
+ * Copyright (C) 2019-2020 Jolla Ltd.
+ * Copyright (C) 2019-2020 Slava Monich <slava.monich@jolla.com>
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -93,7 +93,7 @@ nci_adapter_drop_target(
             priv->presence_check_timer = 0;
         }
         if (priv->presence_check_id) {
-            nci_core_cancel(self->nci, priv->presence_check_id);
+            nfc_target_cancel_transmit(target, priv->presence_check_id);
             priv->presence_check_id = 0;
         }
         GINFO("Target is gone");
