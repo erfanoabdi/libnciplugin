@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2019 Jolla Ltd.
- * Copyright (C) 2019 Slava Monich <slava.monich@jolla.com>
+ * Copyright (C) 2019-2020 Jolla Ltd.
+ * Copyright (C) 2019-2020 Slava Monich <slava.monich@jolla.com>
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -38,7 +38,7 @@
 #define NCI_PLUGIN_H
 
 #include <nfc_adapter_impl.h>
-#include <nci_types.h>
+#include <nci_plugin_types.h>
 
 G_BEGIN_DECLS
 
@@ -50,12 +50,12 @@ G_BEGIN_DECLS
 
 typedef struct nci_adapter_priv NciAdapterPriv;
 
-typedef struct nci_adapter {
+struct nci_adapter {
     NfcAdapter parent;
     NfcTarget* target;
     NciAdapterPriv* priv;
     NciCore* nci;
-} NciAdapter;
+};
 
 typedef struct nci_adapter_class {
     NfcAdapterClass parent;

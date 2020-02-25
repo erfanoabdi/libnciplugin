@@ -7,11 +7,13 @@ License: BSD
 URL: https://github.com/mer-hybris/libnciplugin
 Source: %{name}-%{version}.tar.bz2
 
+%define nfcd_version 1.0.27
+
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(libncicore)
 BuildRequires:  pkgconfig(libglibutil)
-BuildRequires: pkgconfig(nfcd-plugin) >= 1.0.25
-Requires: nfcd >= 1.0.20
+BuildRequires: pkgconfig(nfcd-plugin) >= %{nfcd_version}
+Requires: nfcd >= %{nfcd_version}
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 

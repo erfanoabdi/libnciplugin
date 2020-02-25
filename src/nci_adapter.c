@@ -48,6 +48,8 @@
 
 #include <nci_core.h>
 
+#include <gutil_macros.h>
+
 GLOG_MODULE_DEFINE("nciplugin");
 
 /* NCI core events */
@@ -58,6 +60,14 @@ enum {
     CORE_EVENT_COUNT
 };
 
+typedef struct nci_adapter_intf_info {
+    NCI_RF_INTERFACE rf_intf;
+    NCI_PROTOCOL protocol;
+    NCI_MODE mode;
+    GUtilData mode_param;
+    GUtilData activation_param;
+} NciAdapterIntfInfo;
+
 struct nci_adapter_priv {
     gulong nci_event_id[CORE_EVENT_COUNT];
     NFC_MODE desired_mode;
@@ -66,6 +76,8 @@ struct nci_adapter_priv {
     guint mode_check_id;
     guint presence_check_id;
     guint presence_check_timer;
+    NciAdapterIntfInfo* active_intf;
+    gboolean reactivating;
 };
 
 G_DEFINE_ABSTRACT_TYPE(NciAdapter, nci_adapter, NFC_TYPE_ADAPTER)
@@ -79,6 +91,64 @@ G_DEFINE_ABSTRACT_TYPE(NciAdapter, nci_adapter, NFC_TYPE_ADAPTER)
  * Implementation
  *==========================================================================*/
 
+#define nci_adapter_intf_info_free(x) g_free(x)
+
+static
+NciAdapterIntfInfo*
+nci_adapter_intf_info_new(
+    const NciIntfActivationNtf* ntf)
+{
+    if (ntf) {
+        /* Allocate the whole thing from a single memory block */
+        const gsize total = G_ALIGN8(sizeof(NciAdapterIntfInfo)) +
+            G_ALIGN8(ntf->mode_param_len) + ntf->activation_param_len;
+        NciAdapterIntfInfo* info = g_malloc(total);
+        guint8* ptr = (guint8*)info;
+
+        info->rf_intf = ntf->rf_intf;
+        info->protocol = ntf->protocol;
+        info->mode = ntf->mode;
+        ptr += G_ALIGN8(sizeof(NciAdapterIntfInfo));
+
+        info->mode_param.size = ntf->mode_param_len;
+        if (ntf->mode_param_len) {
+            info->mode_param.bytes = ptr;
+            memcpy(ptr, ntf->mode_param_bytes, ntf->mode_param_len);
+            ptr += G_ALIGN8(ntf->mode_param_len);
+        } else {
+            info->mode_param.bytes = NULL;
+        }
+
+        info->activation_param.size = ntf->activation_param_len;
+        if (ntf->activation_param_len) {
+            info->activation_param.bytes = ptr;
+            memcpy(ptr, ntf->activation_param_bytes, ntf->activation_param_len);
+        } else {
+            info->activation_param.bytes = NULL;
+        }
+        return info;
+    }
+    return NULL;
+}
+
+static
+gboolean
+nci_adapter_intf_info_matches(
+    const NciAdapterIntfInfo* info,
+    const NciIntfActivationNtf* ntf)
+{
+    return info &&
+        info->rf_intf == ntf->rf_intf &&
+        info->protocol == ntf->protocol &&
+        info->mode == ntf->mode &&
+        info->mode_param.size == ntf->mode_param_len &&
+        (!ntf->mode_param_len || !memcmp(info->mode_param.bytes,
+        ntf->mode_param_bytes, ntf->mode_param_len)) &&
+        info->activation_param.size == ntf->activation_param_len &&
+        (!ntf->activation_param_len || !memcmp(info->activation_param.bytes,
+        ntf->activation_param_bytes, ntf->activation_param_len));
+}
+
 static
 void
 nci_adapter_drop_target(
@@ -90,6 +160,7 @@ nci_adapter_drop_target(
         NciAdapterPriv* priv = self->priv;
 
         self->target = NULL;
+        priv->reactivating = FALSE;
         if (priv->presence_check_timer) {
             g_source_remove(priv->presence_check_timer);
             priv->presence_check_timer = 0;
@@ -97,6 +168,10 @@ nci_adapter_drop_target(
         if (priv->presence_check_id) {
             nfc_target_cancel_transmit(target, priv->presence_check_id);
             priv->presence_check_id = 0;
+        }
+        if (priv->active_intf) {
+            nci_adapter_intf_info_free(priv->active_intf);
+            priv->active_intf = NULL;
         }
         GINFO("Target is gone");
         nfc_target_gone(target);
@@ -117,7 +192,7 @@ nci_adapter_presence_check_done(
     GDEBUG("Presence check %s", ok ? "ok" : "failed");
     priv->presence_check_id = 0;
     if (!ok) {
-        nci_core_set_state(self->nci, NCI_RFST_DISCOVERY);
+        nci_adapter_deactivate(self, target);
     }
 }
 
@@ -230,6 +305,71 @@ nci_adapter_convert_iso_dep_poll_a(
 }
 
 static
+NfcTag*
+nci_adapter_create_known_tag(
+    NciAdapter* self,
+    const NciIntfActivationNtf* ntf)
+{
+    const NciModeParam* mp = ntf->mode_param; /* Caller checked it for NULL */
+    NfcParamPollA poll_a;
+    NfcParamPollB poll_b;
+
+    /* Figure out what kind of target we are dealing with */
+    switch (ntf->mode) {
+    case NCI_MODE_PASSIVE_POLL_A:
+        switch (ntf->rf_intf) {
+        case NCI_RF_INTERFACE_FRAME:
+            /* Type 2 Tag */
+            return nfc_adapter_add_tag_t2(NFC_ADAPTER(self), self->target,
+                nci_adapter_convert_poll_a(&poll_a, &mp->poll_a));
+        case NCI_RF_INTERFACE_ISO_DEP:
+            /* ISO-DEP Type 4A */
+            if (ntf->activation_param) {
+                const NciActivationParam* ap = ntf->activation_param;
+                NfcParamIsoDepPollA iso_dep_poll_a;
+
+                return nfc_adapter_add_tag_t4a(NFC_ADAPTER(self),
+                    self->target, nci_adapter_convert_poll_a
+                        (&poll_a, &mp->poll_a),
+                    nci_adapter_convert_iso_dep_poll_a
+                        (&iso_dep_poll_a, &ap->iso_dep_poll_a));
+            }
+            break;
+        case NCI_RF_INTERFACE_NFCEE_DIRECT:
+        case NCI_RF_INTERFACE_NFC_DEP:
+        case NCI_RF_INTERFACE_PROPRIETARY:
+            break;
+        }
+        break;
+    case NCI_MODE_PASSIVE_POLL_B:
+        switch (ntf->rf_intf) {
+        case NCI_RF_INTERFACE_ISO_DEP:
+            /* ISO-DEP Type 4B */
+            return nfc_adapter_add_tag_t4b(NFC_ADAPTER(self), self->target,
+                nci_adapter_convert_poll_b(&poll_b, &mp->poll_b), NULL);
+        case NCI_RF_INTERFACE_FRAME:
+        case NCI_RF_INTERFACE_NFCEE_DIRECT:
+        case NCI_RF_INTERFACE_NFC_DEP:
+        case NCI_RF_INTERFACE_PROPRIETARY:
+            break;
+        }
+        break;
+    case NCI_MODE_ACTIVE_POLL_A:
+    case NCI_MODE_PASSIVE_POLL_F:
+    case NCI_MODE_ACTIVE_POLL_F:
+    case NCI_MODE_PASSIVE_POLL_15693:
+    case NCI_MODE_PASSIVE_LISTEN_A:
+    case NCI_MODE_PASSIVE_LISTEN_B:
+    case NCI_MODE_PASSIVE_LISTEN_F:
+    case NCI_MODE_ACTIVE_LISTEN_A:
+    case NCI_MODE_ACTIVE_LISTEN_F:
+    case NCI_MODE_PASSIVE_LISTEN_15693:
+        break;
+    }
+    return NULL;
+}
+
+static
 void
 nci_adapter_nci_intf_activated(
     NciCore* nci,
@@ -238,80 +378,43 @@ nci_adapter_nci_intf_activated(
 {
     NciAdapter* self = NCI_ADAPTER(user_data);
     NciAdapterPriv* priv = self->priv;
-    const NciModeParam* mp = ntf->mode_param;
     NfcTag* tag = NULL;
+    NfcTarget* reactivated = NULL;
 
-    /* Drop the previous target, if any */
-    nci_adapter_drop_target(self);
-
-    /* Register the new tag */
-    self->target = nci_target_new(nci, ntf);
-
-    /* Figure out what kind of target we are dealing with */
-    if (mp) {
-        NfcParamPollA poll_a;
-        NfcParamPollB poll_b;
-
-        switch (ntf->mode) {
-        case NCI_MODE_PASSIVE_POLL_A:
-            switch (ntf->rf_intf) {
-            case NCI_RF_INTERFACE_FRAME:
-                /* Type 2 Tag */
-                tag = nfc_adapter_add_tag_t2(NFC_ADAPTER(self), self->target,
-                    nci_adapter_convert_poll_a(&poll_a, &mp->poll_a));
-                break;
-            case NCI_RF_INTERFACE_ISO_DEP:
-                /* ISO-DEP Type 4A */
-                if (ntf->activation_param) {
-                    const NciActivationParam* ap = ntf->activation_param;
-                    NfcParamIsoDepPollA iso_dep_poll_a;
-
-                    tag = nfc_adapter_add_tag_t4a(NFC_ADAPTER(self),
-                        self->target, nci_adapter_convert_poll_a
-                            (&poll_a, &mp->poll_a),
-                        nci_adapter_convert_iso_dep_poll_a
-                            (&iso_dep_poll_a, &ap->iso_dep_poll_a));
-                }
-                break;
-            case NCI_RF_INTERFACE_NFCEE_DIRECT:
-            case NCI_RF_INTERFACE_NFC_DEP:
-                break;
-            }
-            break;
-        case NCI_MODE_PASSIVE_POLL_B:
-            switch (ntf->rf_intf) {
-            case NCI_RF_INTERFACE_ISO_DEP:
-                /* ISO-DEP Type 4B */
-                tag = nfc_adapter_add_tag_t4b(NFC_ADAPTER(self), self->target,
-                    nci_adapter_convert_poll_b(&poll_b, &mp->poll_b), NULL);
-                break;
-            case NCI_RF_INTERFACE_FRAME:
-            case NCI_RF_INTERFACE_NFCEE_DIRECT:
-            case NCI_RF_INTERFACE_NFC_DEP:
-                break;
-            }
-            break;
-        case NCI_MODE_ACTIVE_POLL_A:
-        case NCI_MODE_PASSIVE_POLL_F:
-        case NCI_MODE_ACTIVE_POLL_F:
-        case NCI_MODE_PASSIVE_POLL_15693:
-        case NCI_MODE_PASSIVE_LISTEN_A:
-        case NCI_MODE_PASSIVE_LISTEN_B:
-        case NCI_MODE_PASSIVE_LISTEN_F:
-        case NCI_MODE_ACTIVE_LISTEN_A:
-        case NCI_MODE_ACTIVE_LISTEN_F:
-        case NCI_MODE_PASSIVE_LISTEN_15693:
-            break;
-        }
+    if (!priv->reactivating) {
+        /* Drop the previous target, if any */
+        nci_adapter_drop_target(self);
+    } else if (self->target &&
+        !nci_adapter_intf_info_matches(priv->active_intf, ntf)) {
+        GDEBUG("Different tag has arrived, dropping the old one");
+        nci_adapter_drop_target(self);
     }
 
-    if (!tag) {
-        nfc_adapter_add_other_tag(NFC_ADAPTER(self), self->target);
+    if (self->target) {
+        /* The same target has arrived */
+        priv->reactivating = FALSE;
+        reactivated = self->target;
+    } else {
+        /* Register the new tag */
+        self->target = nci_target_new(self, ntf);
+        priv->active_intf = nci_adapter_intf_info_new(ntf);
+        if (ntf->mode_param) {
+            tag = nci_adapter_create_known_tag(self, ntf);
+        }
+        if (!tag) {
+            nfc_adapter_add_other_tag(NFC_ADAPTER(self), self->target);
+        }
     }
 
     /* Start periodic presence checks */
     priv->presence_check_timer = g_timeout_add(PRESENCE_CHECK_PERIOD_MS,
         nci_adapter_presence_check_timer, self);
+
+    /* Notify the core that target has beed reactivated */
+    if (reactivated) {
+        GDEBUG("Target reactivated");
+        nfc_target_reactivated(reactivated);
+    }
 }
 
 static
@@ -384,6 +487,46 @@ nci_adapter_finalize_core(
     }
 }
 
+gboolean
+nci_adapter_reactivate(
+    NciAdapter* self,
+    NfcTarget* target)
+{
+    if (self && self->target == target && target) {
+        NciAdapterPriv* priv = self->priv;
+        NciCore* nci = self->nci;
+
+        if (priv->active_intf && !priv->reactivating && nci &&
+            nci->current_state == NCI_RFST_POLL_ACTIVE &&
+            nci->next_state == NCI_RFST_POLL_ACTIVE) {
+            priv->reactivating = TRUE;
+            if (priv->presence_check_timer) {
+                /* Stop presence checks for the time being */
+                g_source_remove(priv->presence_check_timer);
+                priv->presence_check_timer = 0;
+            }
+            /* Switch to discovery and expect the same target to reappear */
+            nci_core_set_state(nci, NCI_RFST_DISCOVERY);
+            return TRUE;
+        }
+    }
+    GWARN("Can't reactivate the tag in this state");
+    return FALSE;
+}
+
+void
+nci_adapter_deactivate(
+    NciAdapter* self,
+    NfcTarget* target)
+{
+    if (self && self->target == target && target) {
+        nci_adapter_drop_target(self);
+        if (self->parent.powered) {
+            nci_core_set_state(self->nci, NCI_RFST_DISCOVERY);
+        }
+    }
+}
+
 /*==========================================================================*
  * Methods
  *==========================================================================*/
@@ -430,9 +573,23 @@ nci_adapter_next_state_changed(
     NciAdapter* adapter)
 {
     NciAdapter* self = NCI_ADAPTER(adapter);
+    NciAdapterPriv* priv = self->priv;
+    NciCore* nci = self->nci;
 
-    if (self->nci->next_state != NCI_RFST_POLL_ACTIVE) {
+    switch (nci->next_state) {
+    case NCI_RFST_POLL_ACTIVE:
+        break;
+    case NCI_RFST_DISCOVERY:
+    case NCI_RFST_W4_ALL_DISCOVERIES:
+    case NCI_RFST_W4_HOST_SELECT:
+        if (priv->reactivating) {
+            /* Keep the target if we are waiting for it to reappear */
+            break;
+        }
+        /* no break */
+    default:
         nci_adapter_drop_target(self);
+        break;
     }
     nci_adapter_mode_check(self);
 }
