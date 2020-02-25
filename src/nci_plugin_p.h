@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2019 Jolla Ltd.
- * Copyright (C) 2019 Slava Monich <slava.monich@jolla.com>
+ * Copyright (C) 2019-2020 Jolla Ltd.
+ * Copyright (C) 2019-2020 Slava Monich <slava.monich@jolla.com>
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -47,18 +47,30 @@ void
     gboolean ok,
     void* user_data);
 
-G_GNUC_INTERNAL
 NfcTarget*
 nci_target_new(
-    NciCore* nci,
-    const NciIntfActivationNtf* ntf);
+    NciAdapter* adapter,
+    const NciIntfActivationNtf* ntf)
+    G_GNUC_INTERNAL;
 
-G_GNUC_INTERNAL
 guint
 nci_target_presence_check(
     NfcTarget* target,
     NciTargetPresenseCheckFunc fn,
-    void* user_data);
+    void* user_data)
+    G_GNUC_INTERNAL;
+
+gboolean
+nci_adapter_reactivate(
+    NciAdapter* adapter,
+    NfcTarget* target)
+    G_GNUC_INTERNAL;
+
+void
+nci_adapter_deactivate(
+    NciAdapter* adapter,
+    NfcTarget* target)
+    G_GNUC_INTERNAL;
 
 #endif /* NCI_PLUGIN_PRIVATE_H */
 

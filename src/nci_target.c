@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2019 Jolla Ltd.
- * Copyright (C) 2019 Slava Monich <slava.monich@jolla.com>
+ * Copyright (C) 2019-2020 Jolla Ltd.
+ * Copyright (C) 2019-2020 Slava Monich <slava.monich@jolla.com>
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -37,6 +37,7 @@
 
 #include "nci_plugin_p.h"
 #include "nci_plugin_log.h"
+#include "nci_adapter_impl.h"
 
 #include <nci_core.h>
 
@@ -73,7 +74,7 @@ gboolean
 
 struct nci_target {
     NfcTarget target;
-    NciCore* nci;
+    NciAdapter* adapter;
     gulong event_id[EVENT_COUNT];
     guint send_in_progress;
     gboolean transmit_in_progress;
@@ -124,7 +125,9 @@ nci_target_cancel_send(
     NciTarget* self)
 {
     if (self->send_in_progress) {
-        nci_core_cancel(self->nci, self->send_in_progress);
+        if (self->adapter) {
+            nci_core_cancel(self->adapter->nci, self->send_in_progress);
+        }
         self->send_in_progress = 0;
         if (self->pending_reply) {
             g_bytes_unref(self->pending_reply);
@@ -135,12 +138,18 @@ nci_target_cancel_send(
 
 static
 void
-nci_target_drop_nci(
+nci_target_drop_adapter(
     NciTarget* self)
 {
-    nci_target_cancel_send(self);
-    nci_core_remove_all_handlers(self->nci, self->event_id);
-    self->nci = NULL;
+    if (self->adapter) {
+        NciAdapter* adapter = self->adapter;
+
+        nci_target_cancel_send(self);
+        nci_core_remove_all_handlers(adapter->nci, self->event_id);
+        g_object_remove_weak_pointer(G_OBJECT(adapter), (gpointer*)
+            &self->adapter);
+        self->adapter = NULL;
+    }
 }
 
 static
@@ -300,7 +309,7 @@ nci_target_transmit_finish_iso_dep(
 
 NfcTarget*
 nci_target_new(
-    NciCore* nci,
+    NciAdapter* adapter,
     const NciIntfActivationNtf* ntf)
 {
      NciTarget* self = g_object_new(PN547_NFC_TYPE_TARGET, NULL);
@@ -371,9 +380,11 @@ nci_target_new(
          break;
      }
 
-     self->nci = nci;
-     self->event_id[EVENT_DATA_PACKET] = nci_core_add_data_packet_handler(nci,
-         nci_target_data_packet_handler, self);
+     self->adapter = adapter;
+     g_object_add_weak_pointer(G_OBJECT(adapter), (gpointer*)&self->adapter);
+     self->event_id[EVENT_DATA_PACKET] =
+         nci_core_add_data_packet_handler(adapter->nci,
+             nci_target_data_packet_handler, self);
      return target;
 }
 
@@ -412,13 +423,14 @@ nci_target_transmit(
     guint len)
 {
     NciTarget* self = NCI_TARGET(target);
+    NciAdapter* adapter = self->adapter;
 
     GASSERT(!self->send_in_progress);
     GASSERT(!self->transmit_in_progress);
-    if (self->nci) {
+    if (adapter) {
         GBytes* bytes = g_bytes_new(data, len);
 
-        self->send_in_progress = nci_core_send_data_msg(self->nci,
+        self->send_in_progress = nci_core_send_data_msg(adapter->nci,
             NCI_STATIC_RF_CONN_ID, bytes, nci_target_data_sent,
             NULL, self);
         g_bytes_unref(bytes);
@@ -446,9 +458,7 @@ void
 nci_target_deactivate(
     NfcTarget* target)
 {
-    NciTarget* self = NCI_TARGET(target);
-
-    nci_core_set_state(self->nci, NCI_RFST_IDLE);
+    nci_adapter_deactivate(NCI_TARGET(target)->adapter, target);
 }
 
 static
@@ -456,8 +466,18 @@ void
 nci_target_gone(
     NfcTarget* target)
 {
-    nci_target_drop_nci(NCI_TARGET(target));
+    nci_target_drop_adapter(NCI_TARGET(target));
     NFC_TARGET_CLASS(nci_target_parent_class)->gone(target);
+}
+
+static
+gboolean
+nci_target_reactivate(
+    NfcTarget* target)
+{
+    NciTarget* self = NCI_TARGET(target);
+
+    return self->adapter && nci_adapter_reactivate(self->adapter, target);
 }
 
 /*==========================================================================*
@@ -476,9 +496,7 @@ void
 nci_target_finalize(
     GObject* object)
 {
-    NciTarget* self = NCI_TARGET(object);
-
-    nci_target_drop_nci(self);
+    nci_target_drop_adapter(NCI_TARGET(object));
     G_OBJECT_CLASS(nci_target_parent_class)->finalize(object);
 }
 
@@ -492,6 +510,7 @@ nci_target_class_init(
     klass->transmit = nci_target_transmit;
     klass->cancel_transmit = nci_target_cancel_transmit;
     klass->gone = nci_target_gone;
+    klass->reactivate = nci_target_reactivate;
 }
 
 /*
