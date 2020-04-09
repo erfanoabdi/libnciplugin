@@ -18,6 +18,7 @@ BuildRequires: pkgconfig(nfcd-plugin) >= %{nfcd_version}
 Requires: libglibutil >= %{libglibutil_version}
 Requires: libncicore >= %{libncicore_version}
 Requires: nfcd >= %{nfcd_version}
+Requires: libncicore >= %{libncicore_version}
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
