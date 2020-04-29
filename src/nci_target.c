@@ -292,15 +292,12 @@ nci_target_transmit_finish_iso_dep(
     const guint8* payload,
     guint len)
 {
-    if (len > 0) {
-        /*
-         * 8.3 ISO-DEP RF Interface
-         * 8.3.1.2 Data from RF to the DH
-         */
-        nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK, payload, len);
-        return TRUE;
-    }
-    return FALSE;
+    /*
+     * 8.3 ISO-DEP RF Interface
+     * 8.3.1.2 Data from RF to the DH
+     */
+    nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK, payload, len);
+    return TRUE;
 }
 
 /*==========================================================================*
