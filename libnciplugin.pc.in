@@ -1,10 +1,10 @@
 name=nciplugin
-libdir=/usr/lib
+libdir=@libdir@
 includedir=/usr/include
 
 Name: libnciplugin
 Description: Support library for NCI-based nfcd plugins
-Version: [version]
+Version: @version@
 Requires.private: glib-2.0 gio-2.0 libglibutil libncicore
 Libs: -L${libdir} -l${name}
 Cflags: -I${includedir} -I${includedir}/${name}
