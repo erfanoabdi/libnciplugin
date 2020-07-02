@@ -4,6 +4,7 @@ debian/libnciplugin
 debian/libnciplugin-dev
 debian/*.debhelper.log
 debian/*.debhelper
+debian/*.install
 debian/*.substvars
 debian/tmp
 documentation.list
