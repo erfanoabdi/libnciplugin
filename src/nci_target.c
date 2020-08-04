@@ -83,11 +83,11 @@ struct nci_target {
     NciTargetTransmitFinishFunc transmit_finish_fn;
 };
 
-GType nci_target_get_type(void);
+GType nci_target_get_type(void) G_GNUC_INTERNAL;
+#define PARENT_CLASS nci_target_parent_class
+#define THIS_TYPE (nci_target_get_type())
+#define THIS(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), THIS_TYPE, NciTarget))
 G_DEFINE_TYPE(NciTarget, nci_target, NFC_TYPE_TARGET)
-#define PN547_NFC_TYPE_TARGET (nci_target_get_type())
-#define NCI_TARGET(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), \
-        PN547_NFC_TYPE_TARGET, NciTarget))
 
 static
 NciTargetPresenceCheck*
@@ -175,7 +175,7 @@ nci_target_data_sent(
     gboolean success,
     void* user_data)
 {
-    NciTarget* self = NCI_TARGET(user_data);
+    NciTarget* self = THIS(user_data);
 
     GASSERT(self->send_in_progress);
     self->send_in_progress = 0;
@@ -202,7 +202,7 @@ nci_target_data_packet_handler(
     guint len,
     void* user_data)
 {
-    NciTarget* self = NCI_TARGET(user_data);
+    NciTarget* self = THIS(user_data);
 
     if (cid == NCI_STATIC_RF_CONN_ID && self->transmit_in_progress &&
         !self->pending_reply) {
@@ -309,7 +309,7 @@ nci_target_new(
     NciAdapter* adapter,
     const NciIntfActivationNtf* ntf)
 {
-     NciTarget* self = g_object_new(PN547_NFC_TYPE_TARGET, NULL);
+     NciTarget* self = g_object_new(THIS_TYPE, NULL);
      NfcTarget* target = &self->target;
 
      switch (ntf->mode) {
@@ -392,7 +392,7 @@ nci_target_presence_check(
     void* user_data)
 {
     if (G_LIKELY(target)) {
-        NciTarget* self = NCI_TARGET(target);
+        NciTarget* self = THIS(target);
 
         if (self && self->presence_check_fn) {
             NciTargetPresenceCheck* check =
@@ -419,7 +419,7 @@ nci_target_transmit(
     const void* data,
     guint len)
 {
-    NciTarget* self = NCI_TARGET(target);
+    NciTarget* self = THIS(target);
     NciAdapter* adapter = self->adapter;
 
     GASSERT(!self->send_in_progress);
@@ -444,7 +444,7 @@ void
 nci_target_cancel_transmit(
     NfcTarget* target)
 {
-    NciTarget* self = NCI_TARGET(target);
+    NciTarget* self = THIS(target);
 
     self->transmit_in_progress = FALSE;
     nci_target_cancel_send(self);
@@ -455,7 +455,7 @@ void
 nci_target_deactivate(
     NfcTarget* target)
 {
-    nci_adapter_deactivate(NCI_TARGET(target)->adapter, target);
+    nci_adapter_deactivate(THIS(target)->adapter, target);
 }
 
 static
@@ -463,8 +463,8 @@ void
 nci_target_gone(
     NfcTarget* target)
 {
-    nci_target_drop_adapter(NCI_TARGET(target));
-    NFC_TARGET_CLASS(nci_target_parent_class)->gone(target);
+    nci_target_drop_adapter(THIS(target));
+    NFC_TARGET_CLASS(PARENT_CLASS)->gone(target);
 }
 
 static
@@ -472,7 +472,7 @@ gboolean
 nci_target_reactivate(
     NfcTarget* target)
 {
-    NciTarget* self = NCI_TARGET(target);
+    NciTarget* self = THIS(target);
 
     return self->adapter && nci_adapter_reactivate(self->adapter, target);
 }
@@ -493,8 +493,8 @@ void
 nci_target_finalize(
     GObject* object)
 {
-    nci_target_drop_adapter(NCI_TARGET(object));
-    G_OBJECT_CLASS(nci_target_parent_class)->finalize(object);
+    nci_target_drop_adapter(THIS(object));
+    G_OBJECT_CLASS(PARENT_CLASS)->finalize(object);
 }
 
 static
