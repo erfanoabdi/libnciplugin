@@ -311,6 +311,7 @@ nci_target_new(
 {
      NciTarget* self = g_object_new(THIS_TYPE, NULL);
      NfcTarget* target = &self->target;
+     int tx_timeout = -1;
 
      switch (ntf->mode) {
      case NCI_MODE_PASSIVE_POLL_A:
@@ -370,6 +371,7 @@ nci_target_new(
          self->transmit_finish_fn = nci_target_transmit_finish_frame;
          break;
      case NCI_RF_INTERFACE_ISO_DEP:
+         tx_timeout = 0; /* Rely on CORE_INTERFACE_ERROR_NTF */
          self->transmit_finish_fn = nci_target_transmit_finish_iso_dep;
          break;
      default:
@@ -378,6 +380,7 @@ nci_target_new(
      }
 
      self->adapter = adapter;
+     nfc_target_set_transmit_timeout(target, tx_timeout);
      g_object_add_weak_pointer(G_OBJECT(adapter), (gpointer*)&self->adapter);
      self->event_id[EVENT_DATA_PACKET] =
          nci_core_add_data_packet_handler(adapter->nci,
