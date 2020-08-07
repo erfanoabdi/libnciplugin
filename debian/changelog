@@ -1,3 +1,9 @@
+libnciplugin (1.0.8) unstable; urgency=low
+
+  * Disable transmit timeouts for ISO-DEP targets
+
+ -- Slava Monich <slava.monich@jolla.com>  Fri, 07 Aug 2020 13:57:28 +0300
+
 libnciplugin (1.0.7) unstable; urgency=low
 
   * Respect arch specific lib dir
