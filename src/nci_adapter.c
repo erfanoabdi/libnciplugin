@@ -302,6 +302,10 @@ nci_adapter_convert_iso_dep_poll_a(
 {
     dest->fsc = src->fsc;
     dest->t1 = src->t1;
+    dest->t0 = src->t0;
+    dest->ta = src->ta;
+    dest->tb = src->tb;
+    dest->tc = src->tc;
     return dest;
 }
 
