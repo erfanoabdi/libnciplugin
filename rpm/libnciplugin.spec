@@ -1,17 +1,19 @@
 Name: libnciplugin
-Version: 1.0.8
+Version: 1.0.9
 Release: 0
 Summary: Support library for NCI-based nfcd plugins
 License: BSD
 URL: https://github.com/mer-hybris/libnciplugin
 Source: %{name}-%{version}.tar.bz2
 
-%define nfcd_version 1.0.37
+%define nfcd_version 1.0.39
+%define libncicore_version 1.1.11
 
-BuildRequires:  pkgconfig(glib-2.0)
-BuildRequires:  pkgconfig(libncicore)
-BuildRequires:  pkgconfig(libglibutil)
+BuildRequires: pkgconfig(glib-2.0)
+BuildRequires: pkgconfig(libglibutil)
+BuildRequires: pkgconfig(libncicore) >= %{libncicore_version}
 BuildRequires: pkgconfig(nfcd-plugin) >= %{nfcd_version}
+Requires: libncicore >= %{libncicore_version}
 Requires: nfcd >= %{nfcd_version}
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
