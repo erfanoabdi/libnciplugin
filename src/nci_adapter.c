@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2019-2020 Jolla Ltd.
  * Copyright (C) 2019-2020 Slava Monich <slava.monich@jolla.com>
+ * Copyright (C) 2020 Open Mobile Platform LLC.
  *
  * You may use this file under the terms of the BSD license as follows:
  *
@@ -301,6 +302,22 @@ nci_adapter_convert_iso_dep_poll_a(
 {
     dest->fsc = src->fsc;
     dest->t1 = src->t1;
+    dest->t0 = src->t0;
+    dest->ta = src->ta;
+    dest->tb = src->tb;
+    dest->tc = src->tc;
+    return dest;
+}
+
+static
+const NfcParamIsoDepPollB*
+nci_adapter_convert_iso_dep_poll_b(
+    NfcParamIsoDepPollB* dest,
+    const NciActivationParamIsoDepPollB* src)
+{
+    dest->mbli = src->mbli;     /* Maximum buffer length index */
+    dest->did = src->did;       /* Device ID */
+    dest->hlr = src->hlr;       /* Higher Layer Response */
     return dest;
 }
 
@@ -345,8 +362,17 @@ nci_adapter_create_known_tag(
         switch (ntf->rf_intf) {
         case NCI_RF_INTERFACE_ISO_DEP:
             /* ISO-DEP Type 4B */
-            return nfc_adapter_add_tag_t4b(NFC_ADAPTER(self), self->target,
-                nci_adapter_convert_poll_b(&poll_b, &mp->poll_b), NULL);
+            if (ntf->activation_param) {
+                const NciActivationParam* ap = ntf->activation_param;
+                NfcParamIsoDepPollB iso_dep_poll_b;
+
+                return nfc_adapter_add_tag_t4b(NFC_ADAPTER(self),
+                    self->target, nci_adapter_convert_poll_b
+                        (&poll_b, &mp->poll_b),
+                    nci_adapter_convert_iso_dep_poll_b
+                        (&iso_dep_poll_b, &ap->iso_dep_poll_b));
+            }
+            break;
         case NCI_RF_INTERFACE_FRAME:
         case NCI_RF_INTERFACE_NFCEE_DIRECT:
         case NCI_RF_INTERFACE_NFC_DEP:
