@@ -291,6 +291,8 @@ nci_adapter_convert_poll_b(
     dest->fsc = src->fsc;
     dest->nfcid0.bytes = src->nfcid0;
     dest->nfcid0.size = sizeof(src->nfcid0);
+    dest->prot_info = src->prot_info;
+    memcpy(dest->app_data, src->app_data, sizeof(src->app_data));
     return dest;
 }
 
