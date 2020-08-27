@@ -1,7 +1,6 @@
 # -*- Mode: makefile-gmake -*-
 
-.PHONY: clean all debug release coverage pkgconfig install install-dev test
-.PHONY: print_debug_lib print_release_lib print_coverage_lib
+.PHONY: clean all debug release coverage pkgconfig install install-dev
 
 #
 # Required packages
@@ -34,7 +33,7 @@ STATIC_LIB = $(LIB_NAME).a
 
 VERSION_MAJOR = 1
 VERSION_MINOR = 0
-VERSION_RELEASE = 9
+VERSION_RELEASE = 10
 
 # Version for pkg-config
 PCVERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_RELEASE)
@@ -135,15 +134,6 @@ release: $(RELEASE_STATIC_LIB) $(RELEASE_LIB) $(RELEASE_LINK)
 coverage: $(COVERAGE_STATIC_LIB)
 
 pkgconfig: $(PKGCONFIG)
-
-print_debug_lib:
-	@echo $(DEBUG_STATIC_LIB)
-
-print_release_lib:
-	@echo $(RELEASE_STATIC_LIB)
-
-print_coverage_lib:
-	@echo $(COVERAGE_STATIC_LIB)
 
 clean:
 	rm -f *~ $(SRC_DIR)/*~ $(INCLUDE_DIR)/*~ rpm/*~

@@ -1,12 +1,12 @@
 Name: libnciplugin
-Version: 1.0.9
+Version: 1.0.10
 Release: 0
 Summary: Support library for NCI-based nfcd plugins
 License: BSD
 URL: https://github.com/mer-hybris/libnciplugin
 Source: %{name}-%{version}.tar.bz2
 
-%define nfcd_version 1.0.39
+%define nfcd_version 1.0.40
 %define libncicore_version 1.1.11
 
 BuildRequires: pkgconfig(glib-2.0)
