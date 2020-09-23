@@ -519,6 +519,43 @@ nci_adapter_create_known_tag(
 }
 
 static
+const NfcParamPoll*
+nci_adapter_get_mode_param(
+    NfcParamPoll* poll,
+    const NciIntfActivationNtf* ntf)
+{
+    const NciModeParam* mp = ntf->mode_param;
+
+    /* Figure out what kind of target we are dealing with */
+    switch (ntf->mode) {
+    case NCI_MODE_PASSIVE_POLL_A:
+        if (mp) {
+            nci_adapter_convert_poll_a(&poll->a, &mp->poll_a);
+            return poll;
+        }
+        break;
+    case NCI_MODE_PASSIVE_POLL_B:
+        if (mp) {
+            nci_adapter_convert_poll_b(&poll->b, &mp->poll_b);
+            return poll;
+        }
+        break;
+    case NCI_MODE_ACTIVE_POLL_A:
+    case NCI_MODE_PASSIVE_POLL_F:
+    case NCI_MODE_ACTIVE_POLL_F:
+    case NCI_MODE_PASSIVE_POLL_15693:
+    case NCI_MODE_PASSIVE_LISTEN_A:
+    case NCI_MODE_PASSIVE_LISTEN_B:
+    case NCI_MODE_PASSIVE_LISTEN_F:
+    case NCI_MODE_ACTIVE_LISTEN_A:
+    case NCI_MODE_ACTIVE_LISTEN_F:
+    case NCI_MODE_PASSIVE_LISTEN_15693:
+        break;
+    }
+    return NULL;
+}
+
+static
 void
 nci_adapter_nci_intf_activated(
     NciCore* nci,
@@ -551,7 +588,10 @@ nci_adapter_nci_intf_activated(
             tag = nci_adapter_create_known_tag(self, ntf);
         }
         if (!tag) {
-            nfc_adapter_add_other_tag(NFC_ADAPTER(self), self->target);
+            NfcParamPoll poll;
+
+            nfc_adapter_add_other_tag2(NFC_ADAPTER(self), self->target,
+                nci_adapter_get_mode_param(&poll, ntf));
         }
     }
 
