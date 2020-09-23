@@ -7,14 +7,16 @@ URL: https://github.com/mer-hybris/libnciplugin
 Source: %{name}-%{version}.tar.bz2
 
 %define nfcd_version 1.0.40
-%define libncicore_version 1.1.11
+%define libncicore_version 1.1.13
+%define libglibutil_version 1.0.31
 
 BuildRequires: pkgconfig(glib-2.0)
-BuildRequires: pkgconfig(libglibutil)
+BuildRequires: pkgconfig(libglibutil) >= %{libglibutil_version}
 BuildRequires: pkgconfig(libncicore) >= %{libncicore_version}
 BuildRequires: pkgconfig(nfcd-plugin) >= %{nfcd_version}
 Requires: libncicore >= %{libncicore_version}
 Requires: nfcd >= %{nfcd_version}
+Requires: libglibutil >= %{libglibutil_version}
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
