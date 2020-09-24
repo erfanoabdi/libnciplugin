@@ -48,7 +48,9 @@
 #include <nfc_tag_t4.h>
 
 #include <nci_core.h>
+#include <nci_util.h>
 
+#include <gutil_misc.h>
 #include <gutil_macros.h>
 
 GLOG_MODULE_DEFINE("nciplugin");
@@ -67,6 +69,7 @@ typedef struct nci_adapter_intf_info {
     NCI_MODE mode;
     GUtilData mode_param;
     GUtilData activation_param;
+    NciModeParam* mode_param_parsed;
 } NciAdapterIntfInfo;
 
 struct nci_adapter_priv {
@@ -88,11 +91,12 @@ G_DEFINE_ABSTRACT_TYPE(NciAdapter, nci_adapter, NFC_TYPE_ADAPTER)
 
 #define PRESENCE_CHECK_PERIOD_MS (250)
 
+#define RANDOM_UID_SIZE (4)
+#define RANDOM_UID_START_BYTE (0x08)
+
 /*==========================================================================*
  * Implementation
  *==========================================================================*/
-
-#define nci_adapter_intf_info_free(x) g_free(x)
 
 static
 NciAdapterIntfInfo*
@@ -127,9 +131,127 @@ nci_adapter_intf_info_new(
         } else {
             info->activation_param.bytes = NULL;
         }
+
+        info->mode_param_parsed = nci_util_copy_mode_param(ntf->mode_param,
+            ntf->mode);
+
         return info;
     }
     return NULL;
+}
+
+static
+gboolean
+mode_param_match_poll_a(
+    const NciModeParamPollA* pa1,
+    const NciModeParamPollA* pa2)
+{
+    /*
+    * Compare all fields except UID 'cause UID may be
+    * changed after losing field
+    */
+    return pa1->sel_res == pa2->sel_res &&
+        pa1->sel_res_len == pa2->sel_res_len &&
+        !memcmp(pa1->sens_res, pa2->sens_res, sizeof(pa2->sens_res));
+}
+
+static
+gboolean
+mode_param_match_poll_b(
+    const NciModeParamPollB* pb1,
+    const NciModeParamPollB* pb2)
+{
+    /*
+    * Compare all fields except UID 'cause UID may be
+    * changed after losing field
+    */
+    return pb1->fsc == pb2->fsc &&
+        !memcmp(pb1->app_data, pb2->app_data, sizeof(pb2->app_data)) &&
+        pb1->prot_info.size == pb2->prot_info.size &&
+        gutil_data_equal(&pb1->prot_info, &pb2->prot_info);
+}
+
+static
+gboolean
+mode_param_match_poll_a_t2(
+    const NciModeParamPollA* pa1,
+    const NciModeParamPollA* pa2)
+{
+    gboolean partial_match = mode_param_match_poll_a(pa1, pa2);
+
+    /*
+    * For tag type 2 logic is almost the same, but random UID has some
+    * limitations: according to AN10927 Random UID RID should be handled
+    * separately - single sized (4 bytes) starting with 0x08
+    */
+    if (pa1->nfcid1_len == pa2->nfcid1_len &&
+        pa2->nfcid1_len == RANDOM_UID_SIZE &&
+        pa1->nfcid1[0] == pa2->nfcid1[0] &&
+        pa2->nfcid1[0] == RANDOM_UID_START_BYTE) {
+        return partial_match;
+    } else {
+        /* Otherwise UID should fully match */
+        return partial_match &&
+            pa1->nfcid1_len == pa2->nfcid1_len &&
+            !memcmp(pa1->nfcid1, pa2->nfcid1, pa2->nfcid1_len);
+    }
+}
+
+static
+gboolean
+nci_adapter_info_mode_params_matches(
+    const NciAdapterIntfInfo* info,
+    const NciIntfActivationNtf* ntf)
+{
+    const NciModeParam* mp1 = info->mode_param_parsed;
+    const NciModeParam* mp2 = ntf->mode_param;
+
+    if (mp1 && mp2) {
+        /* Mode params criteria depends on type of tag */
+        switch (ntf->mode) {
+        case NCI_MODE_PASSIVE_POLL_A:
+            switch (ntf->rf_intf) {
+            case NCI_RF_INTERFACE_FRAME:
+                /* Type 2 Tag */
+                return mode_param_match_poll_a_t2(&mp1->poll_a, &mp2->poll_a);
+            case NCI_RF_INTERFACE_ISO_DEP:
+                /* ISO-DEP Type 4A */
+                return mode_param_match_poll_a(&mp1->poll_a, &mp2->poll_a);
+            case NCI_RF_INTERFACE_NFCEE_DIRECT:
+            case NCI_RF_INTERFACE_NFC_DEP:
+            case NCI_RF_INTERFACE_PROPRIETARY:
+                break;
+            }
+            break;
+        case NCI_MODE_PASSIVE_POLL_B:
+            switch (ntf->rf_intf) {
+            case NCI_RF_INTERFACE_ISO_DEP:
+                /* ISO-DEP Type 4B */
+                return mode_param_match_poll_b(&mp1->poll_b, &mp2->poll_b);
+            case NCI_RF_INTERFACE_FRAME:
+            case NCI_RF_INTERFACE_NFCEE_DIRECT:
+            case NCI_RF_INTERFACE_NFC_DEP:
+            case NCI_RF_INTERFACE_PROPRIETARY:
+                break;
+            }
+            break;
+        case NCI_MODE_ACTIVE_POLL_A:
+        case NCI_MODE_PASSIVE_POLL_F:
+        case NCI_MODE_ACTIVE_POLL_F:
+        case NCI_MODE_PASSIVE_POLL_15693:
+        case NCI_MODE_PASSIVE_LISTEN_A:
+        case NCI_MODE_PASSIVE_LISTEN_B:
+        case NCI_MODE_PASSIVE_LISTEN_F:
+        case NCI_MODE_ACTIVE_LISTEN_A:
+        case NCI_MODE_ACTIVE_LISTEN_F:
+        case NCI_MODE_PASSIVE_LISTEN_15693:
+            break;
+        }
+    }
+    /* Full match is expected in other cases */
+    return info->mode_param.size == ntf->mode_param_len &&
+        (!ntf->mode_param_len || !memcmp(info->mode_param.bytes,
+            ntf->mode_param_bytes, ntf->mode_param_len));
 }
 
 static
@@ -142,9 +264,7 @@ nci_adapter_intf_info_matches(
         info->rf_intf == ntf->rf_intf &&
         info->protocol == ntf->protocol &&
         info->mode == ntf->mode &&
-        info->mode_param.size == ntf->mode_param_len &&
-        (!ntf->mode_param_len || !memcmp(info->mode_param.bytes,
-        ntf->mode_param_bytes, ntf->mode_param_len)) &&
+        nci_adapter_info_mode_params_matches(info, ntf) &&
         info->activation_param.size == ntf->activation_param_len &&
         (!ntf->activation_param_len || !memcmp(info->activation_param.bytes,
         ntf->activation_param_bytes, ntf->activation_param_len));
@@ -171,7 +291,8 @@ nci_adapter_drop_target(
             priv->presence_check_id = 0;
         }
         if (priv->active_intf) {
-            nci_adapter_intf_info_free(priv->active_intf);
+            g_free(priv->active_intf->mode_param_parsed);
+            g_free(priv->active_intf);
             priv->active_intf = NULL;
         }
         GINFO("Target is gone");
@@ -398,6 +519,43 @@ nci_adapter_create_known_tag(
 }
 
 static
+const NfcParamPoll*
+nci_adapter_get_mode_param(
+    NfcParamPoll* poll,
+    const NciIntfActivationNtf* ntf)
+{
+    const NciModeParam* mp = ntf->mode_param;
+
+    /* Figure out what kind of target we are dealing with */
+    switch (ntf->mode) {
+    case NCI_MODE_PASSIVE_POLL_A:
+        if (mp) {
+            nci_adapter_convert_poll_a(&poll->a, &mp->poll_a);
+            return poll;
+        }
+        break;
+    case NCI_MODE_PASSIVE_POLL_B:
+        if (mp) {
+            nci_adapter_convert_poll_b(&poll->b, &mp->poll_b);
+            return poll;
+        }
+        break;
+    case NCI_MODE_ACTIVE_POLL_A:
+    case NCI_MODE_PASSIVE_POLL_F:
+    case NCI_MODE_ACTIVE_POLL_F:
+    case NCI_MODE_PASSIVE_POLL_15693:
+    case NCI_MODE_PASSIVE_LISTEN_A:
+    case NCI_MODE_PASSIVE_LISTEN_B:
+    case NCI_MODE_PASSIVE_LISTEN_F:
+    case NCI_MODE_ACTIVE_LISTEN_A:
+    case NCI_MODE_ACTIVE_LISTEN_F:
+    case NCI_MODE_PASSIVE_LISTEN_15693:
+        break;
+    }
+    return NULL;
+}
+
+static
 void
 nci_adapter_nci_intf_activated(
     NciCore* nci,
@@ -430,7 +588,10 @@ nci_adapter_nci_intf_activated(
             tag = nci_adapter_create_known_tag(self, ntf);
         }
         if (!tag) {
-            nfc_adapter_add_other_tag(NFC_ADAPTER(self), self->target);
+            NfcParamPoll poll;
+
+            nfc_adapter_add_other_tag2(NFC_ADAPTER(self), self->target,
+                nci_adapter_get_mode_param(&poll, ntf));
         }
     }
 
