@@ -1,5 +1,5 @@
 Name: libnciplugin
-Version: 1.0.10
+Version: 1.0.11
 Release: 0
 Summary: Support library for NCI-based nfcd plugins
 License: BSD
@@ -14,9 +14,10 @@ BuildRequires: pkgconfig(glib-2.0)
 BuildRequires: pkgconfig(libglibutil) >= %{libglibutil_version}
 BuildRequires: pkgconfig(libncicore) >= %{libncicore_version}
 BuildRequires: pkgconfig(nfcd-plugin) >= %{nfcd_version}
+
+Requires: libglibutil >= %{libglibutil_version}
 Requires: libncicore >= %{libncicore_version}
 Requires: nfcd >= %{nfcd_version}
-Requires: libglibutil >= %{libglibutil_version}
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 
