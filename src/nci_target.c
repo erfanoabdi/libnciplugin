@@ -285,7 +285,7 @@ nci_target_transmit_finish_frame(
          * 8.2 Frame RF Interface
          * 8.2.1.2 Data from RF to the DH
          */
-        if (status == NCI_STATUS_OK) {
+        if (status == NCI_STATUS_OK || status == 0x14) {
             nfc_target_transmit_done(target, NFC_TRANSMIT_STATUS_OK,
                 payload, len - 1);
             return TRUE;
